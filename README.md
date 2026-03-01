@@ -1,6 +1,6 @@
 <div align="center">
   <img src="saverbot_logo.png" alt="nanobot" width="100%">
-  <h1>svaerbot: nanobot-based Personal AI Assistant tailored for savers</h1>
+  <h1>saverbot: nanobot-based Personal AI Assistant tailored for savers</h1>
   <p>
     <a href="https://pypi.org/project/nanobot-ai/"><img src="https://img.shields.io/pypi/v/nanobot-ai" alt="PyPI"></a>
     <a href="https://pepy.tech/project/nanobot-ai"><img src="https://static.pepy.tech/badge/nanobot-ai" alt="Downloads"></a>
