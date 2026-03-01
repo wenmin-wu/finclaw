@@ -28,7 +28,7 @@ from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import ChannelsConfig, ExecToolConfig
+    from nanobot.config.schema import BaiduAIChatConfig, ChannelsConfig, ChromeDebugConfig, ExecToolConfig, GoogleAIChatConfig, RedNoteConfig
     from nanobot.cron.service import CronService
 
 
@@ -60,6 +60,10 @@ class AgentLoop:
         brave_api_key: str | None = None,
         exec_config: ExecToolConfig | None = None,
         cron_service: CronService | None = None,
+        chrome_debug_config: ChromeDebugConfig | None = None,
+        rednote_config: RedNoteConfig | None = None,
+        google_ai_chat_config: GoogleAIChatConfig | None = None,
+        baidu_ai_chat_config: BaiduAIChatConfig | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
@@ -79,6 +83,10 @@ class AgentLoop:
         self.brave_api_key = brave_api_key
         self.exec_config = exec_config or ExecToolConfig()
         self.cron_service = cron_service
+        self.chrome_debug_config = chrome_debug_config
+        self.rednote_config = rednote_config
+        self.google_ai_chat_config = google_ai_chat_config
+        self.baidu_ai_chat_config = baidu_ai_chat_config
         self.restrict_to_workspace = restrict_to_workspace
 
         self.context = ContextBuilder(workspace)
@@ -126,6 +134,30 @@ class AgentLoop:
         self.tools.register(SpawnTool(manager=self.subagents))
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+        if self.rednote_config is not None:
+            from nanobot.agent.tools.rednote import ReadRedNoteTool
+            cdp_port = self.chrome_debug_config.cdp_port if self.chrome_debug_config else 19327
+            self.tools.register(ReadRedNoteTool(
+                cdp_port=cdp_port,
+                max_images=self.rednote_config.max_images,
+            ))
+        if self.google_ai_chat_config is not None and getattr(self.google_ai_chat_config, "enabled", False):
+            from nanobot.agent.tools.google_ai_chat import GoogleAIChatTool
+            cdp_port = self.chrome_debug_config.cdp_port if self.chrome_debug_config else 19327
+            self.tools.register(GoogleAIChatTool(
+                response_timeout=getattr(self.google_ai_chat_config, "response_timeout", 90),
+                headless=getattr(self.google_ai_chat_config, "headless", True),
+                use_cdp=getattr(self.google_ai_chat_config, "use_cdp", False),
+                cdp_port=getattr(self.google_ai_chat_config, "cdp_port", cdp_port),
+            ))
+        if self.baidu_ai_chat_config is not None and getattr(self.baidu_ai_chat_config, "enabled", False):
+            from nanobot.agent.tools.baidu_ai_chat import BaiduAIChatTool
+            self.tools.register(BaiduAIChatTool(
+                response_timeout=getattr(self.baidu_ai_chat_config, "response_timeout", 90),
+                headless=getattr(self.baidu_ai_chat_config, "headless", True),
+                use_cdp=getattr(self.baidu_ai_chat_config, "use_cdp", False),
+                cdp_port=getattr(self.baidu_ai_chat_config, "cdp_port", 9222),
+            ))
 
     async def _connect_mcp(self) -> None:
         """Connect to configured MCP servers (one-time, lazy)."""
@@ -149,12 +181,23 @@ class AgentLoop:
         finally:
             self._mcp_connecting = False
 
-    def _set_tool_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
+    def _set_tool_context(
+        self,
+        channel: str,
+        chat_id: str,
+        message_id: str | None = None,
+        cron_deliver_auto: bool = False,
+    ) -> None:
         """Update context for all tools that need routing info."""
-        for name in ("message", "spawn", "cron"):
+        if message_tool := self.tools.get("message"):
+            if hasattr(message_tool, "set_context"):
+                message_tool.set_context(
+                    channel, chat_id, message_id=message_id, cron_deliver_auto=cron_deliver_auto
+                )
+        for name in ("spawn", "cron"):
             if tool := self.tools.get(name):
                 if hasattr(tool, "set_context"):
-                    tool.set_context(channel, chat_id, *([message_id] if name == "message" else []))
+                    tool.set_context(channel, chat_id)
 
     @staticmethod
     def _strip_think(text: str | None) -> str | None:
@@ -221,14 +264,26 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
 
+                pending_images: list[dict[str, Any]] = []
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    if isinstance(result, list):
+                        text_parts = []
+                        for part in result:
+                            if isinstance(part, dict):
+                                if part.get("type") == "text":
+                                    text_parts.append(part.get("text", ""))
+                                elif part.get("type") == "image_url":
+                                    pending_images.append(part)
+                        result = " ".join(text_parts) if text_parts else "[Image content]"
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                if pending_images:
+                    messages.append({"role": "user", "content": pending_images})
             else:
                 clean = self._strip_think(response.content)
                 # Don't persist error responses to session history — they can
@@ -338,7 +393,7 @@ class AgentLoop:
             logger.info("Processing system message from {}", msg.sender_id)
             key = f"{channel}:{chat_id}"
             session = self.sessions.get_or_create(key)
-            self._set_tool_context(channel, chat_id, msg.metadata.get("message_id"))
+            self._set_tool_context(channel, chat_id, message_id=(msg.metadata or {}).get("message_id"))
             history = session.get_history(max_messages=self.memory_window)
             messages = self.context.build_messages(
                 history=history,
@@ -408,7 +463,12 @@ class AgentLoop:
             _task = asyncio.create_task(_consolidate_and_unlock())
             self._consolidation_tasks.add(_task)
 
-        self._set_tool_context(msg.channel, msg.chat_id, msg.metadata.get("message_id"))
+        cron_deliver_auto = bool((msg.metadata or {}).get("cron_deliver_auto", False))
+        self._set_tool_context(
+            msg.channel, msg.chat_id,
+            message_id=msg.metadata.get("message_id") if msg.metadata else None,
+            cron_deliver_auto=cron_deliver_auto,
+        )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
@@ -487,9 +547,20 @@ class AgentLoop:
         channel: str = "cli",
         chat_id: str = "direct",
         on_progress: Callable[[str], Awaitable[None]] | None = None,
+        cron_deliver_auto: bool = False,
     ) -> str:
-        """Process a message directly (for CLI or cron usage)."""
+        """Process a message directly (for CLI or cron usage).
+        When cron_deliver_auto is True (cron job with deliver=auto), the message tool
+        will require confirm_send before actually sending to the user.
+        """
         await self._connect_mcp()
-        msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
+        metadata = {"cron_deliver_auto": True} if cron_deliver_auto else {}
+        msg = InboundMessage(
+            channel=channel,
+            sender_id="user",
+            chat_id=chat_id,
+            content=content,
+            metadata=metadata,
+        )
         response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
         return response.content if response else ""

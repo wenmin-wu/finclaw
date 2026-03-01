@@ -1,0 +1,16 @@
+[
+  // ----- Code folding (best practice: match VS Code defaults) -----
+  // Toggle fold at cursor (collapse/expand) — single shortcut for both
+  { "key": "cmd+k cmd+l", "command": "editor.toggleFold", "when": "editorTextFocus && foldingEnabled" },
+  // Fold / Unfold current region
+  { "key": "alt+cmd+[", "command": "editor.fold", "when": "editorTextFocus && foldingEnabled" },
+  { "key": "alt+cmd+]", "command": "editor.unfold", "when": "editorTextFocus && foldingEnabled" },
+  // Fold / Unfold recursively (all subregions)
+  { "key": "cmd+k cmd+[", "command": "editor.foldRecursively", "when": "editorTextFocus && foldingEnabled" },
+  { "key": "cmd+k cmd+]", "command": "editor.unfoldRecursively", "when": "editorTextFocus && foldingEnabled" },
+  // Fold all / Unfold all in file
+  { "key": "cmd+k cmd+0", "command": "editor.foldAll", "when": "editorTextFocus && foldingEnabled" },
+  { "key": "cmd+k cmd+j", "command": "editor.unfoldAll", "when": "editorTextFocus && foldingEnabled" },
+  // Create folding range from selection (replace awkward cmd+r cmd+,)
+  { "key": "cmd+k cmd+,", "command": "editor.createFoldingRangeFromSelection", "when": "editorTextFocus && foldingEnabled" }
+]

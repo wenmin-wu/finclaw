@@ -1,10 +1,14 @@
 """File system tools: read, write, edit."""
 
+import base64
 import difflib
+import mimetypes
 from pathlib import Path
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
+
+_IMAGE_MIME_PREFIXES = ("image/jpeg", "image/png", "image/gif", "image/webp")
 
 
 def _resolve_path(path: str, workspace: Path | None = None, allowed_dir: Path | None = None) -> Path:
@@ -22,34 +26,59 @@ def _resolve_path(path: str, workspace: Path | None = None, allowed_dir: Path | 
 
 
 class ReadFileTool(Tool):
-    """Tool to read file contents."""
+    """Tool to read file contents with optional line range and image support."""
 
-    def __init__(self, workspace: Path | None = None, allowed_dir: Path | None = None):
+    def __init__(
+        self,
+        workspace: Path | None = None,
+        allowed_dir: Path | None = None,
+        max_line_length: int = 2000,
+    ):
         self._workspace = workspace
         self._allowed_dir = allowed_dir
+        self._max_line_length = max_line_length
 
     @property
     def name(self) -> str:
         return "read_file"
-    
+
     @property
     def description(self) -> str:
-        return "Read the contents of a file at the given path."
-    
+        return (
+            "Read the contents of a file at the given path. "
+            "For text files: use line_offset and n_lines to read a specific line range (1-based). "
+            "For image files (jpg, png, gif, webp): the image is shown to you for visual analysis. "
+            "IMPORTANT: read_file does NOT send the image to the user; use the message tool with media_paths to send images."
+        )
+
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The file path to read"
-                }
+                "path": {"type": "string", "description": "The file path to read"},
+                "line_offset": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Line number to start reading from (1-based). Omit to read from the start.",
+                },
+                "n_lines": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Number of lines to read. Default 1000 if omitted.",
+                },
             },
-            "required": ["path"]
+            "required": ["path"],
         }
-    
-    async def execute(self, path: str, **kwargs: Any) -> str:
+
+    async def execute(
+        self,
+        path: str,
+        line_offset: int | None = None,
+        n_lines: int | None = None,
+        **kwargs: Any
+    ) -> str | list[dict[str, Any]]:
         try:
             file_path = _resolve_path(path, self._workspace, self._allowed_dir)
             if not file_path.exists():
@@ -57,8 +86,39 @@ class ReadFileTool(Tool):
             if not file_path.is_file():
                 return f"Error: Not a file: {path}"
 
-            content = file_path.read_text(encoding="utf-8")
-            return content
+            mime, _ = mimetypes.guess_type(str(file_path))
+            if mime and mime in _IMAGE_MIME_PREFIXES:
+                b64 = base64.b64encode(file_path.read_bytes()).decode()
+                return [
+                    {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
+                    {"type": "text", "text": f"[Image: {path}]"},
+                ]
+
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                size = file_path.stat().st_size
+                return f"Error: {path} is a binary file ({size:,} bytes) and cannot be read as text."
+
+            lines = content.split("\n")
+            total_lines = len(lines)
+            start = (line_offset or 1) - 1
+            limit = n_lines or 1000
+            if start < 0:
+                start = 0
+            if start >= total_lines:
+                return f"Error: line_offset {line_offset or 1} is beyond the file's total lines ({total_lines})"
+            end = min(start + limit, total_lines)
+            selected_lines = lines[start:end]
+            formatted_lines = []
+            for i, line in enumerate(selected_lines, start=start + 1):
+                if len(line) > self._max_line_length:
+                    line = line[: self._max_line_length] + " [truncated]"
+                formatted_lines.append(f"{i:>6}\t{line}")
+            result = "\n".join(formatted_lines)
+            if end < total_lines or line_offset is not None or n_lines is not None:
+                result = f"[Lines {start + 1}-{end} of {total_lines}]\n{result}"
+            return result
         except PermissionError as e:
             return f"Error: {e}"
         except Exception as e:
@@ -129,23 +189,26 @@ class EditFileTool(Tool):
         return {
             "type": "object",
             "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The file path to edit"
+                "path": {"type": "string", "description": "The file path to edit"},
+                "old_text": {"type": "string", "description": "The exact text to find and replace"},
+                "new_text": {"type": "string", "description": "The text to replace with"},
+                "replace_all": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "If true, replace all occurrences of old_text; if false, only the first.",
                 },
-                "old_text": {
-                    "type": "string",
-                    "description": "The exact text to find and replace"
-                },
-                "new_text": {
-                    "type": "string",
-                    "description": "The text to replace with"
-                }
             },
-            "required": ["path", "old_text", "new_text"]
+            "required": ["path", "old_text", "new_text"],
         }
-    
-    async def execute(self, path: str, old_text: str, new_text: str, **kwargs: Any) -> str:
+
+    async def execute(
+        self,
+        path: str,
+        old_text: str,
+        new_text: str,
+        replace_all: bool = False,
+        **kwargs: Any
+    ) -> str:
         try:
             file_path = _resolve_path(path, self._workspace, self._allowed_dir)
             if not file_path.exists():
@@ -156,15 +219,19 @@ class EditFileTool(Tool):
             if old_text not in content:
                 return self._not_found_message(old_text, content, path)
 
-            # Count occurrences
             count = content.count(old_text)
+            if replace_all:
+                new_content = content.replace(old_text, new_text)
+                file_path.write_text(new_content, encoding="utf-8")
+                return f"Successfully edited {path} - replaced {count} occurrences"
             if count > 1:
-                return f"Warning: old_text appears {count} times. Please provide more context to make it unique."
-
+                return (
+                    f"Warning: old_text appears {count} times. "
+                    "Provide more context to make it unique, or set replace_all=true to replace all."
+                )
             new_content = content.replace(old_text, new_text, 1)
             file_path.write_text(new_content, encoding="utf-8")
-
-            return f"Successfully edited {file_path}"
+            return f"Successfully edited {path}"
         except PermissionError as e:
             return f"Error: {e}"
         except Exception as e:

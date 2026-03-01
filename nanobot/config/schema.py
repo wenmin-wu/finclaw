@@ -183,6 +183,8 @@ class QQConfig(Base):
     app_id: str = ""  # 机器人 ID (AppID) from q.qq.com
     secret: str = ""  # 机器人密钥 (AppSecret) from q.qq.com
     allow_from: list[str] = Field(default_factory=list)  # Allowed user openids (empty = public access)
+    # 收到用户消息后立即回复的文案，用于暗示已收到（空字符串表示不发送）
+    received_reply: str = "收到，正在处理～"
 
 class MatrixConfig(Base):
     """Matrix (Element) channel configuration."""
@@ -287,6 +289,40 @@ class WebSearchConfig(Base):
     max_results: int = 5
 
 
+class ChromeDebugConfig(Base):
+    """Chrome 调试模式配置，供 read_rednote 等依赖浏览器调试端口的工具共用。"""
+
+    cdp_port: int = 19327  # 远程调试端口（默认用不易碰撞的端口）
+    auto_start_chrome: bool = True  # 是否由本进程自动启动 Chrome 调试模式（否则需用户自行启动）
+
+
+class RedNoteConfig(Base):
+    """小红书 read_rednote 工具配置。Chrome 端口与自动启动见 tools.chromeDebug。"""
+
+    max_images: int = 20  # 笔记中最多返回的图片数（0 表示不返回图片）
+
+
+class GoogleAIChatConfig(Base):
+    """Google Search AI 多轮对话工具配置，纯 Playwright 实现（无需浏览器插件）。"""
+
+    enabled: bool = False
+    response_timeout: int = 90  # 单轮回复最大等待秒数
+    headless: bool = True  # 是否无头模式
+    # 若设置则通过 CDP 连接已有 Chrome（与 chromeDebug 端口一致）；不设置则每次由 Playwright 自行启动 Chromium
+    use_cdp: bool = False
+    cdp_port: int = 19327
+
+
+class BaiduAIChatConfig(Base):
+    """百度文心助手（chat.baidu.com/search）多轮对话工具配置，纯 Playwright + 专用 tab。"""
+
+    enabled: bool = False
+    response_timeout: int = 90  # 单轮回复最大等待秒数
+    headless: bool = True
+    use_cdp: bool = False
+    cdp_port: int = 9222  # 默认与 start-chrome-debug.sh 的 9222 一致
+
+
 class WebToolsConfig(Base):
     """Web tools configuration."""
 
@@ -316,6 +352,10 @@ class ToolsConfig(Base):
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    chrome_debug: ChromeDebugConfig = Field(default_factory=ChromeDebugConfig)
+    rednote: RedNoteConfig = Field(default_factory=RedNoteConfig)
+    google_ai_chat: GoogleAIChatConfig = Field(default_factory=GoogleAIChatConfig)
+    baidu_ai_chat: BaiduAIChatConfig = Field(default_factory=BaiduAIChatConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 

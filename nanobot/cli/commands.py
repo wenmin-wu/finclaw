@@ -268,7 +268,18 @@ def gateway(
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
-    
+
+    chrome_proc = None
+    chrome_debug_cfg = getattr(config.tools, "chrome_debug", None)
+    if chrome_debug_cfg and getattr(chrome_debug_cfg, "auto_start_chrome", True):
+        from nanobot.utils.chrome_launcher import start_chrome_debug
+        chrome_proc = start_chrome_debug(
+            port=chrome_debug_cfg.cdp_port,
+            user_data_dir=get_data_dir() / "rednote" / "chrome_profile",
+        )
+        if chrome_proc:
+            console.print(f"[green]✓[/green] Chrome 调试模式已启动（端口 {chrome_debug_cfg.cdp_port}），供 read_rednote 等工具使用")
+
     # Create cron service first (callback set after agent creation)
     cron_store_path = get_data_dir() / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
@@ -287,6 +298,10 @@ def gateway(
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         cron_service=cron,
+        chrome_debug_config=chrome_debug_cfg,
+        rednote_config=getattr(config.tools, "rednote", None),
+        google_ai_chat_config=getattr(config.tools, "google_ai_chat", None),
+        baidu_ai_chat_config=getattr(config.tools, "baidu_ai_chat", None),
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         mcp_servers=config.tools.mcp_servers,
@@ -301,8 +316,10 @@ def gateway(
             session_key=f"cron:{job.id}",
             channel=job.payload.channel or "cli",
             chat_id=job.payload.to or "direct",
+            cron_deliver_auto=(job.payload.deliver == "auto"),
         )
-        if job.payload.deliver and job.payload.to:
+        # Only deliver final response when deliver is True (always); deliver=auto uses message tool
+        if job.payload.deliver is True and job.payload.to:
             from nanobot.bus.events import OutboundMessage
             await bus.publish_outbound(OutboundMessage(
                 channel=job.payload.channel or "cli",
@@ -393,6 +410,9 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
+            if chrome_proc is not None and chrome_proc.poll() is None:
+                chrome_proc.terminate()
+                chrome_proc.wait(timeout=5)
     
     asyncio.run(run())
 
@@ -446,6 +466,10 @@ def agent(
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         cron_service=cron,
+        chrome_debug_config=getattr(config.tools, "chrome_debug", None),
+        rednote_config=getattr(config.tools, "rednote", None),
+        google_ai_chat_config=getattr(config.tools, "google_ai_chat", None),
+        baidu_ai_chat_config=getattr(config.tools, "baidu_ai_chat", None),
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
@@ -765,6 +789,15 @@ cron_app = typer.Typer(help="Manage scheduled tasks")
 app.add_typer(cron_app, name="cron")
 
 
+def _deliver_str(deliver) -> str:
+    """Format deliver for display: always | auto | never."""
+    if deliver is True:
+        return "always"
+    if deliver == "auto":
+        return "auto"
+    return "never"
+
+
 @cron_app.command("list")
 def cron_list(
     all: bool = typer.Option(False, "--all", "-a", help="Include disabled jobs"),
@@ -786,6 +819,7 @@ def cron_list(
     table.add_column("ID", style="cyan")
     table.add_column("Name")
     table.add_column("Schedule")
+    table.add_column("Deliver")
     table.add_column("Status")
     table.add_column("Next Run")
     
@@ -812,34 +846,177 @@ def cron_list(
                 next_run = time.strftime("%Y-%m-%d %H:%M", time.localtime(ts))
         
         status = "[green]enabled[/green]" if job.enabled else "[dim]disabled[/dim]"
-        
-        table.add_row(job.id, job.name, sched, status, next_run)
+        deliver_str = _deliver_str(job.payload.deliver)
+        table.add_row(job.id, job.name, sched, deliver_str, status, next_run)
     
     console.print(table)
 
 
+def _job_to_yaml_dict(job) -> dict:
+    """Convert CronJob to YAML-friendly dict (for get and add --file round-trip)."""
+    from datetime import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    s = job.schedule
+    if s.kind == "every":
+        schedule = {"every_seconds": (s.every_ms or 0) // 1000}
+    elif s.kind == "cron":
+        schedule = {"cron": s.expr or ""}
+        if s.tz:
+            schedule["tz"] = s.tz
+    else:
+        schedule = {}
+        if s.at_ms:
+            try:
+                tz = ZoneInfo(s.tz) if s.tz else None
+                schedule["at"] = _dt.fromtimestamp(s.at_ms / 1000, tz=tz).isoformat()
+            except Exception:
+                schedule["at"] = _dt.fromtimestamp(s.at_ms / 1000).isoformat()
+
+    out = {
+        "id": job.id,
+        "name": job.name,
+        "message": job.payload.message,
+        "enabled": job.enabled,
+        "schedule": schedule,
+        "deliver": _deliver_str(job.payload.deliver),
+    }
+    if job.payload.channel:
+        out["channel"] = job.payload.channel
+    if job.payload.to:
+        out["to"] = job.payload.to
+    if job.state.next_run_at_ms:
+        try:
+            tz = ZoneInfo(s.tz) if s.tz else None
+            out["next_run"] = _dt.fromtimestamp(
+                job.state.next_run_at_ms / 1000, tz=tz
+            ).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            out["next_run"] = _dt.fromtimestamp(job.state.next_run_at_ms / 1000).strftime(
+                "%Y-%m-%d %H:%M"
+            )
+    return out
+
+
+def _yaml_job_to_schedule(data: dict):
+    """Build CronSchedule from YAML job dict."""
+    from datetime import datetime as _dt
+    from nanobot.cron.types import CronSchedule
+
+    sched = data.get("schedule") or {}
+    every_sec = sched.get("every_seconds")
+    cron_expr = sched.get("cron")
+    at_str = sched.get("at")
+    tz = sched.get("tz")
+
+    if every_sec is not None:
+        return CronSchedule(kind="every", every_ms=int(every_sec) * 1000)
+    if cron_expr:
+        return CronSchedule(kind="cron", expr=str(cron_expr), tz=tz)
+    if at_str:
+        dt = _dt.fromisoformat(at_str.replace("Z", "+00:00"))
+        return CronSchedule(kind="at", at_ms=int(dt.timestamp() * 1000))
+    return None
+
+
+@cron_app.command("get")
+def cron_get(
+    job_id: str = typer.Argument(None, help="Job ID to export (omit to export all)"),
+    output: Path = typer.Option(
+        None, "--output", "-o", path_type=Path, help="Write YAML to this file (default: stdout)"
+    ),
+    all_jobs: bool = typer.Option(False, "--all", "-a", help="Include disabled jobs (when exporting all)"),
+):
+    """Export scheduled jobs to YAML. Use 'cron add --file <path>' to import."""
+    import yaml
+    from nanobot.config.loader import get_data_dir
+    from nanobot.cron.service import CronService
+
+    store_path = get_data_dir() / "cron" / "jobs.json"
+    service = CronService(store_path)
+    jobs = service.list_jobs(include_disabled=all_jobs or job_id is not None)
+    if job_id:
+        jobs = [j for j in jobs if j.id == job_id]
+        if not jobs:
+            console.print(f"[red]Job {job_id} not found[/red]")
+            raise typer.Exit(1)
+    payload = {"jobs": [_job_to_yaml_dict(j) for j in jobs]}
+    text = yaml.safe_dump(payload, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    if output:
+        output.write_text(text, encoding="utf-8")
+        console.print(f"[green]✓[/green] Wrote {len(jobs)} job(s) to {output}")
+    else:
+        console.print(text, end="")
+
+
 @cron_app.command("add")
 def cron_add(
-    name: str = typer.Option(..., "--name", "-n", help="Job name"),
-    message: str = typer.Option(..., "--message", "-m", help="Message for agent"),
+    file: Path = typer.Option(None, "--file", "-f", path_type=Path, help="Load jobs from YAML file"),
+    name: str = typer.Option(None, "--name", "-n", help="Job name (required when not using --file)"),
+    message: str = typer.Option(None, "--message", "-m", help="Message for agent (required when not using --file)"),
     every: int = typer.Option(None, "--every", "-e", help="Run every N seconds"),
     cron_expr: str = typer.Option(None, "--cron", "-c", help="Cron expression (e.g. '0 9 * * *')"),
     tz: str | None = typer.Option(None, "--tz", help="IANA timezone for cron (e.g. 'America/Vancouver')"),
     at: str = typer.Option(None, "--at", help="Run once at time (ISO format)"),
-    deliver: bool = typer.Option(False, "--deliver", "-d", help="Deliver response to channel"),
+    deliver: str = typer.Option(
+        "never",
+        "--deliver",
+        "-d",
+        help="When to deliver response: always | auto (agent decides via message tool) | never",
+    ),
     to: str = typer.Option(None, "--to", help="Recipient for delivery"),
     channel: str = typer.Option(None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"),
 ):
-    """Add a scheduled job."""
+    """Add a scheduled job (or multiple from --file YAML)."""
+    import yaml
     from nanobot.config.loader import get_data_dir
     from nanobot.cron.service import CronService
     from nanobot.cron.types import CronSchedule
-    
+
+    store_path = get_data_dir() / "cron" / "jobs.json"
+    service = CronService(store_path)
+
+    if file is not None:
+        if not file.exists():
+            console.print(f"[red]Error: File not found: {file}[/red]")
+            raise typer.Exit(1)
+        data = yaml.safe_load(file.read_text(encoding="utf-8")) or {}
+        jobs_data = data.get("jobs") or data.get("job") or []
+        if isinstance(jobs_data, dict):
+            jobs_data = [jobs_data]
+        added = 0
+        for item in jobs_data:
+            sched = _yaml_job_to_schedule(item)
+            if sched is None:
+                console.print(f"[red]Skip job '{item.get('name', '?')}': missing schedule (every_seconds, cron, or at)[/red]")
+                continue
+            deliver_val = item.get("deliver", "never")
+            deliver_bool = {"always": True, "auto": "auto", "never": False}.get(deliver_val, False)
+            job = service.add_job(
+                name=str(item.get("name", "unnamed")),
+                schedule=sched,
+                message=str(item.get("message", "")),
+                deliver=deliver_bool,
+                channel=item.get("channel"),
+                to=item.get("to"),
+            )
+            added += 1
+            console.print(f"[green]✓[/green] Added job '{job.name}' ({job.id})")
+        if not added:
+            console.print("[yellow]No jobs added from file.[/yellow]")
+        return
+
+    if name is None or message is None:
+        console.print("[red]Error: --name and --message are required when not using --file[/red]")
+        raise typer.Exit(1)
+    if deliver not in ("always", "auto", "never"):
+        console.print("[red]Error: --deliver must be always, auto, or never[/red]")
+        raise typer.Exit(1)
+    deliver_value: bool | str = {"always": True, "auto": "auto", "never": False}[deliver]
     if tz and not cron_expr:
         console.print("[red]Error: --tz can only be used with --cron[/red]")
         raise typer.Exit(1)
 
-    # Determine schedule type
     if every:
         schedule = CronSchedule(kind="every", every_ms=every * 1000)
     elif cron_expr:
@@ -851,16 +1028,13 @@ def cron_add(
     else:
         console.print("[red]Error: Must specify --every, --cron, or --at[/red]")
         raise typer.Exit(1)
-    
-    store_path = get_data_dir() / "cron" / "jobs.json"
-    service = CronService(store_path)
-    
+
     try:
         job = service.add_job(
             name=name,
             schedule=schedule,
             message=message,
-            deliver=deliver,
+            deliver=deliver_value,
             to=to,
             channel=channel,
         )
@@ -869,6 +1043,59 @@ def cron_add(
         raise typer.Exit(1) from e
 
     console.print(f"[green]✓[/green] Added job '{job.name}' ({job.id})")
+
+
+@cron_app.command("update")
+def cron_update(
+    job_id: str = typer.Argument(..., help="Job ID to update"),
+    name: str = typer.Option(None, "--name", "-n", help="New job name"),
+    message: str = typer.Option(None, "--message", "-m", help="New message for agent"),
+    every: int = typer.Option(None, "--every", "-e", help="Run every N seconds"),
+    cron_expr: str = typer.Option(None, "--cron", "-c", help="Cron expression (e.g. '0 9 * * *')"),
+    tz: str | None = typer.Option(None, "--tz", help="IANA timezone for cron"),
+    at: str = typer.Option(None, "--at", help="Run once at time (ISO format)"),
+    deliver: str = typer.Option(
+        None, "--deliver", "-d",
+        help="When to deliver response: always | auto (agent decides) | never",
+    ),
+    channel: str = typer.Option(None, "--channel", help="Channel for delivery"),
+    to: str = typer.Option(None, "--to", help="Recipient for delivery"),
+    enabled: bool = typer.Option(None, "--enable/--disable", help="Enable or disable job"),
+):
+    """Update a scheduled job by ID. Only provided fields are changed."""
+    from nanobot.config.loader import get_data_dir
+    from nanobot.cron.service import CronService
+
+    if tz is not None and cron_expr is None:
+        console.print("[red]Error: --tz can only be used with --cron[/red]")
+        raise typer.Exit(1)
+    if deliver is not None and deliver not in ("always", "auto", "never"):
+        console.print("[red]Error: --deliver must be always, auto, or never[/red]")
+        raise typer.Exit(1)
+    deliver_val: bool | str | None = None
+    if deliver is not None:
+        deliver_val = {"always": True, "auto": "auto", "never": False}[deliver]
+
+    store_path = get_data_dir() / "cron" / "jobs.json"
+    service = CronService(store_path)
+    job = service.update_job(
+        job_id,
+        name=name,
+        message=message if message is not None else None,
+        every_seconds=every,
+        cron_expr=cron_expr,
+        tz=tz,
+        at=at,
+        deliver=deliver_val,
+        channel=channel,
+        to=to,
+        enabled=enabled,
+    )
+    if job:
+        console.print(f"[green]✓[/green] Updated job '{job.name}' ({job_id})")
+    else:
+        console.print(f"[red]Job {job_id} not found[/red]")
+        raise typer.Exit(1)
 
 
 @cron_app.command("remove")
@@ -937,6 +1164,10 @@ def cron_run(
         reasoning_effort=config.agents.defaults.reasoning_effort,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
+        chrome_debug_config=getattr(config.tools, "chrome_debug", None),
+        rednote_config=getattr(config.tools, "rednote", None),
+        google_ai_chat_config=getattr(config.tools, "google_ai_chat", None),
+        baidu_ai_chat_config=getattr(config.tools, "baidu_ai_chat", None),
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
@@ -953,6 +1184,7 @@ def cron_run(
             session_key=f"cron:{job.id}",
             channel=job.payload.channel or "cli",
             chat_id=job.payload.to or "direct",
+            cron_deliver_auto=(job.payload.deliver == "auto"),
         )
         result_holder.append(response)
         return response

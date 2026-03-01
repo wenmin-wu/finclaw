@@ -17,6 +17,28 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _parse_deliver(value: Any) -> bool | str:
+    """Parse deliver from JSON: True, False, or 'auto'."""
+    if value == "auto":
+        return "auto"
+    if isinstance(value, bool):
+        return value
+    if value in (True, "true", "True", 1, "always"):
+        return True
+    if value in (False, "false", "False", 0, "never"):
+        return False
+    return False
+
+
+def _serialize_deliver(value: bool | str) -> str:
+    """Serialize deliver for JSON (always/auto/never)."""
+    if value == "auto":
+        return "auto"
+    if value is True:
+        return "always"
+    return "never"
+
+
 def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
     """Compute next run time in ms."""
     if schedule.kind == "at":
@@ -97,7 +119,7 @@ class CronService:
                         payload=CronPayload(
                             kind=j["payload"].get("kind", "agent_turn"),
                             message=j["payload"].get("message", ""),
-                            deliver=j["payload"].get("deliver", False),
+                            deliver=_parse_deliver(j["payload"].get("deliver", False)),
                             channel=j["payload"].get("channel"),
                             to=j["payload"].get("to"),
                         ),
@@ -144,7 +166,7 @@ class CronService:
                     "payload": {
                         "kind": j.payload.kind,
                         "message": j.payload.message,
-                        "deliver": j.payload.deliver,
+                        "deliver": _serialize_deliver(j.payload.deliver),
                         "channel": j.payload.channel,
                         "to": j.payload.to,
                     },
@@ -279,15 +301,16 @@ class CronService:
         name: str,
         schedule: CronSchedule,
         message: str,
-        deliver: bool = False,
+        deliver: bool | str = False,
         channel: str | None = None,
         to: str | None = None,
         delete_after_run: bool = False,
     ) -> CronJob:
-        """Add a new job."""
+        """Add a new job. deliver: True/'always', False/'never', or 'auto' (agent decides)."""
         store = self._load_store()
         _validate_schedule_for_add(schedule)
         now = _now_ms()
+        deliver_val = _parse_deliver(deliver) if isinstance(deliver, str) else deliver
         
         job = CronJob(
             id=str(uuid.uuid4())[:8],
@@ -297,7 +320,7 @@ class CronService:
             payload=CronPayload(
                 kind="agent_turn",
                 message=message,
-                deliver=deliver,
+                deliver=deliver_val,
                 channel=channel,
                 to=to,
             ),
@@ -343,7 +366,66 @@ class CronService:
                 self._arm_timer()
                 return job
         return None
-    
+
+    def update_job(
+        self,
+        job_id: str,
+        *,
+        name: str | None = None,
+        message: str | None = None,
+        every_seconds: int | None = None,
+        cron_expr: str | None = None,
+        tz: str | None = None,
+        at: str | None = None,
+        deliver: bool | str | None = None,
+        channel: str | None = None,
+        to: str | None = None,
+        enabled: bool | None = None,
+    ) -> CronJob | None:
+        """Update a job by ID; only provided fields are changed."""
+        store = self._load_store()
+        for job in store.jobs:
+            if job.id != job_id:
+                continue
+            now_ms = _now_ms()
+            job.updated_at_ms = now_ms
+            if name is not None:
+                job.name = name
+            if message is not None and (isinstance(message, str) and message.strip() != ""):
+                job.payload.message = message.strip()
+            if deliver is not None:
+                job.payload.deliver = _parse_deliver(deliver) if isinstance(deliver, str) else deliver
+            if channel is not None:
+                job.payload.channel = channel
+            if to is not None:
+                job.payload.to = to
+            if enabled is not None:
+                job.enabled = enabled
+                if enabled:
+                    job.state.next_run_at_ms = _compute_next_run(job.schedule, now_ms)
+                else:
+                    job.state.next_run_at_ms = None
+            if every_seconds is not None or cron_expr is not None or at is not None or (
+                tz is not None and job.schedule.kind == "cron"
+            ):
+                if every_seconds is not None:
+                    job.schedule = CronSchedule(kind="every", every_ms=every_seconds * 1000)
+                elif cron_expr is not None:
+                    job.schedule = CronSchedule(kind="cron", expr=cron_expr, tz=tz or job.schedule.tz)
+                elif at is not None:
+                    from datetime import datetime as _dt
+                    dt = _dt.fromisoformat(at.replace("Z", "+00:00"))
+                    job.schedule = CronSchedule(kind="at", at_ms=int(dt.timestamp() * 1000))
+                elif tz is not None and job.schedule.kind == "cron":
+                    job.schedule = CronSchedule(kind="cron", expr=job.schedule.expr, tz=tz)
+                if job.enabled:
+                    job.state.next_run_at_ms = _compute_next_run(job.schedule, now_ms)
+            self._save_store()
+            self._arm_timer()
+            logger.info("Cron: updated job {}", job_id)
+            return job
+        return None
+
     async def run_job(self, job_id: str, force: bool = False) -> bool:
         """Manually run a job."""
         store = self._load_store()

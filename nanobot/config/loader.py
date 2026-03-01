@@ -62,8 +62,19 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
 def _migrate_config(data: dict) -> dict:
     """Migrate old config formats to current."""
     # Move tools.exec.restrictToWorkspace → tools.restrictToWorkspace
-    tools = data.get("tools", {})
+    tools = data.setdefault("tools", {})
     exec_cfg = tools.get("exec", {})
     if "restrictToWorkspace" in exec_cfg and "restrictToWorkspace" not in tools:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
+
+    # Ensure tools.chromeDebug and tools.rednote exist (for read_rednote / Chrome debug)
+    if "chromeDebug" not in tools:
+        tools["chromeDebug"] = {"cdpPort": 19327, "autoStartChrome": True}
+    if "rednote" not in tools:
+        tools["rednote"] = {"maxImages": 20}
+    if "googleAiChat" not in tools:
+        tools["googleAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": False, "cdpPort": 19327}
+    if "baiduAiChat" not in tools:
+        tools["baiduAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": False, "cdpPort": 9222}
+
     return data

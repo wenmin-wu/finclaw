@@ -9,6 +9,8 @@ from typing import Any
 
 import litellm
 from litellm import acompletion
+from loguru import logger
+from openai import AsyncOpenAI
 
 from nanobot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from nanobot.providers.registry import find_by_model, find_gateway
@@ -171,6 +173,37 @@ class LiteLLMProvider(LLMProvider):
             sanitized.append(clean)
         return sanitized
 
+    async def _chat_kimi_direct(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        max_tokens: int,
+        temperature: float,
+    ) -> LLMResponse:
+        """Call Kimi For Coding API directly via OpenAI SDK with proper User-Agent.
+        Kimi For Coding is only available for coding agents; LiteLLM does not pass
+        the required User-Agent, so we bypass it and use the OpenAI-compatible client.
+        """
+        client = AsyncOpenAI(
+            api_key=self.api_key,
+            base_url=self.api_base,
+            default_headers={"User-Agent": "KimiCLI/0.77"},
+        )
+        # Strip provider prefix (e.g., "moonshot/kimi-for-coding" -> "kimi-for-coding")
+        model_name = model.split("/")[-1]
+        kwargs: dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if tools:
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+        response = await client.chat.completions.create(**kwargs)
+        return self._parse_response(response)
+
     async def chat(
         self,
         messages: list[dict[str, Any]],
@@ -194,6 +227,28 @@ class LiteLLMProvider(LLMProvider):
             LLMResponse with content and/or tool calls.
         """
         original_model = model or self.default_model
+
+        # Route Kimi For Coding API directly via OpenAI SDK to ensure proper User-Agent.
+        # Kimi For Coding is only available for coding agents; LiteLLM does not pass it.
+        if self.api_base and "api.kimi.com/coding" in self.api_base:
+            try:
+                messages_ready = self._sanitize_messages(
+                    self._sanitize_empty_content(messages)
+                )
+                return await self._chat_kimi_direct(
+                    original_model,
+                    messages_ready,
+                    tools,
+                    max(1, max_tokens),
+                    temperature,
+                )
+            except Exception as e:
+                logger.exception(f"LLM call failed (kimi): {e}")
+                return LLMResponse(
+                    content=f"Error calling LLM: {str(e)}",
+                    finish_reason="error",
+                )
+
         model = self._resolve_model(original_model)
 
         if self._supports_cache_control(original_model):
@@ -237,7 +292,7 @@ class LiteLLMProvider(LLMProvider):
             response = await acompletion(**kwargs)
             return self._parse_response(response)
         except Exception as e:
-            # Return error as content for graceful handling
+            logger.exception(f"LLM call failed (litellm): {e}")
             return LLMResponse(
                 content=f"Error calling LLM: {str(e)}",
                 finish_reason="error",

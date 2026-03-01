@@ -21,12 +21,20 @@ class MessageTool(Tool):
         self._default_chat_id = default_chat_id
         self._default_message_id = default_message_id
         self._sent_in_turn: bool = False
+        self._cron_deliver_auto: bool = False
 
-    def set_context(self, channel: str, chat_id: str, message_id: str | None = None) -> None:
-        """Set the current message context."""
+    def set_context(
+        self,
+        channel: str,
+        chat_id: str,
+        message_id: str | None = None,
+        cron_deliver_auto: bool = False,
+    ) -> None:
+        """Set the current message context (and whether this is a cron job with deliver=auto)."""
         self._default_channel = channel
         self._default_chat_id = chat_id
         self._default_message_id = message_id
+        self._cron_deliver_auto = cron_deliver_auto
 
     def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
         """Set the callback for sending messages."""
@@ -42,7 +50,11 @@ class MessageTool(Tool):
 
     @property
     def description(self) -> str:
-        return "Send a message to the user. Use this when you want to communicate something."
+        return (
+            "Send a message to the user. Use this when you want to communicate something. "
+            "When this is a cron job with deliver=auto, the first call returns a confirmation prompt; "
+            "call again with confirm_send=true only if the alert condition is met."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -51,7 +63,7 @@ class MessageTool(Tool):
             "properties": {
                 "content": {
                     "type": "string",
-                    "description": "The message content to send"
+                    "description": "The message content to send. For cron+deliver=auto, only send when the alert condition is met."
                 },
                 "channel": {
                     "type": "string",
@@ -65,7 +77,12 @@ class MessageTool(Tool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Optional: list of file paths to attach (images, audio, documents)"
-                }
+                },
+                "confirm_send": {
+                    "type": "boolean",
+                    "description": "For cron+deliver=auto: set to true only after confirming the alert condition is met. Omit or false: first call returns a prompt; call again with confirm_send=true to send.",
+                    "default": False,
+                },
             },
             "required": ["content"]
         }
@@ -77,6 +94,7 @@ class MessageTool(Tool):
         chat_id: str | None = None,
         message_id: str | None = None,
         media: list[str] | None = None,
+        confirm_send: bool = False,
         **kwargs: Any
     ) -> str:
         channel = channel or self._default_channel
@@ -88,6 +106,17 @@ class MessageTool(Tool):
 
         if not self._send_callback:
             return "Error: Message sending not configured"
+
+        # Cron job with deliver=auto: require explicit confirm_send before actually sending
+        if self._cron_deliver_auto and not confirm_send:
+            preview = content[:200] + "..." if len(content) > 200 else content
+            return (
+                "[CONFIRM_NEEDED] You requested to send a message. This is a cron job with deliver=auto. "
+                "Only send if the alert condition is met. Do not send for routine completion.\n\n"
+                f"Preview: {preview!r}\n\n"
+                "If the alert condition is met, call message again with the same content and confirm_send=true to send. "
+                "If the alert condition is not met, do not call again (message will not be sent)."
+            )
 
         msg = OutboundMessage(
             channel=channel,

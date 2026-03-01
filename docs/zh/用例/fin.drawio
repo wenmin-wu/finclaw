@@ -1,0 +1,96 @@
+<mxfile host="65bd71144e">
+    <diagram name="Page-1" id="dTwGvYGDTGamez84xG3s">
+        <mxGraphModel dx="984" dy="488" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="yYTstQbh--765b8jbm4--31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeWidth=2;strokeColor=#F87171;dashed=1;" parent="1" source="yYTstQbh--765b8jbm4--11" target="yYTstQbh--765b8jbm4--2" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="640" y="233"/>
+                            <mxPoint x="640" y="430"/>
+                            <mxPoint x="105" y="430"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--32" value="&lt;b&gt;紧急通知 /&amp;nbsp;&lt;font color=&quot;#009900&quot;&gt;静默执行&amp;nbsp;&lt;/font&gt;(&lt;font color=&quot;#ffff00&quot;&gt;自动判别&lt;/font&gt;)&lt;/b&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#F87171;" parent="yYTstQbh--765b8jbm4--31" connectable="0" vertex="1">
+                    <mxGeometry x="-0.0009" y="4" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--11" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1E3A5F;fontColor=#E0F2FE;strokeColor=#38BDF8;" parent="1" vertex="1">
+                    <mxGeometry x="390" y="178.25" width="230" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--1" value="" style="verticalLabelPosition=bottom;aspect=fixed;html=1;shape=mxgraph.salesforce.bots;fillColorStyles=fillColor2,fillColor3,fillColor4;fillColor2=#0369A1;fillColor3=#67E8F9;fillColor4=#E0F2FE;fillColor=none;strokeColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="199.25" width="60" height="57" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;dashed=1;strokeWidth=2;strokeColor=#67E8F9;" parent="1" source="yYTstQbh--765b8jbm4--2" target="yYTstQbh--765b8jbm4--17" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--19" value="&lt;b&gt;CronjobTool&lt;/b&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#67E8F9;" parent="yYTstQbh--765b8jbm4--18" connectable="0" vertex="1">
+                    <mxGeometry x="-0.1641" y="1" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--2" value="" style="image;aspect=fixed;perimeter=ellipsePerimeter;html=1;align=center;shadow=0;dashed=0;spacingTop=3;image=img/lib/active_directory/user_accounts.svg;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="209" width="50" height="48.5" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.017;entryY=0.597;entryDx=0;entryDy=0;entryPerimeter=0;startArrow=blockThin;startFill=1;endArrow=blockThin;endFill=1;strokeWidth=2;strokeColor=#A5F3FC;" parent="1" source="yYTstQbh--765b8jbm4--2" target="yYTstQbh--765b8jbm4--1" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--9" value="&lt;b&gt;新闻/股市监测&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#E0F2FE;" parent="1" vertex="1">
+                    <mxGeometry x="401" y="256.25" width="86" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--10" value="&lt;b&gt;小红书学习&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#E0F2FE;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="258.25" width="82" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--15" style="edgeStyle=none;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;endArrow=none;endFill=0;startArrow=openThin;startFill=0;entryX=0.983;entryY=0.592;entryDx=0;entryDy=0;entryPerimeter=0;strokeWidth=2;strokeColor=#93C5FD;" parent="1" source="yYTstQbh--765b8jbm4--11" target="yYTstQbh--765b8jbm4--1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="340" y="280" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--16" value="&lt;b&gt;CronJobTool&lt;/b&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontColor=#93C5FD;" parent="yYTstQbh--765b8jbm4--15" connectable="0" vertex="1">
+                    <mxGeometry x="0.153" y="-2" relative="1" as="geometry">
+                        <mxPoint as="offset"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--17" value="&lt;b&gt;CronJob&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#E0F2FE;" parent="1" vertex="1">
+                    <mxGeometry x="475" y="178.25" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--22" value="" style="image;aspect=fixed;html=1;points=[];align=center;fontSize=12;image=img/lib/azure2/general/Files.svg;strokeColor=#38BDF8;" parent="1" vertex="1">
+                    <mxGeometry x="220" y="299.25" width="64" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--23" value="&lt;font color=&quot;#ffffff&quot; style=&quot;&quot;&gt;&lt;b&gt;知识库&lt;/b&gt;&lt;/font&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontColor=#E0F2FE;" parent="1" vertex="1">
+                    <mxGeometry x="224" y="370" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--24" value="- 新闻评估&lt;div&gt;&amp;nbsp; -&amp;nbsp; 2026-03-01&lt;/div&gt;&lt;div&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp;- 1201.md&lt;br&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;&lt;/div&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;rounded=0;fontColor=#F0F9FF;" parent="1" vertex="1">
+                    <mxGeometry x="271" y="390" width="130" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--27" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#A78BFA;strokeWidth=2;" parent="1" target="3" edge="1">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="250" y="300" as="sourcePoint"/>
+                        <mxPoint x="250" y="270" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="yYTstQbh--765b8jbm4--29" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.654;entryDx=0;entryDy=0;entryPerimeter=0;strokeColor=#34D399;strokeWidth=2;" parent="1" source="yYTstQbh--765b8jbm4--11" target="yYTstQbh--765b8jbm4--22" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="" style="aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/azure2/ai_machine_learning/Bot_Services.svg;" parent="1" vertex="1">
+                    <mxGeometry x="216" y="199" width="68" height="68" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="" style="sketch=0;aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/mscae/Bot_Services.svg;" parent="1" vertex="1">
+                    <mxGeometry x="419" y="202.75" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="sketch=0;aspect=fixed;html=1;points=[];align=center;image;fontSize=12;image=img/lib/mscae/Bot_Services.svg;" parent="1" vertex="1">
+                    <mxGeometry x="546" y="202.75" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="&lt;font color=&quot;#3399ff&quot;&gt;&lt;b&gt;- 创建执行任务&lt;br&gt;- 更改执行计划&lt;br&gt;- 查看执行进度&lt;/b&gt;&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="276" y="188" width="109" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="&lt;font color=&quot;#66ffff&quot;&gt;&lt;b&gt;- 问答&lt;br&gt;- 安排任务&lt;br&gt;- 引用咨询&lt;/b&gt;&lt;/font&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="138" y="194" width="99" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

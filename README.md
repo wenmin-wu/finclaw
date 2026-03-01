@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="nanobot_logo.png" alt="nanobot" width="500">
-  <h1>nanobot: Ultra-Lightweight Personal AI Assistant</h1>
+  <img src="saverbot_logo.png" alt="nanobot" width="100%">
+  <h1>svaerbot: nanobot-based Personal AI Assistant tailored for savers</h1>
   <p>
     <a href="https://pypi.org/project/nanobot-ai/"><img src="https://img.shields.io/pypi/v/nanobot-ai" alt="PyPI"></a>
     <a href="https://pepy.tech/project/nanobot-ai"><img src="https://static.pepy.tech/badge/nanobot-ai" alt="Downloads"></a>
@@ -17,6 +17,18 @@
 ⚡️ Delivers core agent functionality in just **~4,000** lines of code — **99% smaller** than Clawdbot's 430k+ lines.
 
 📏 Real-time line count: **3,935 lines** (run `bash core_agent_lines.sh` to verify anytime)
+
+## Updates
+
+Saverclaw-specific docs (Chinese) under [docs/zh/updates](docs/zh/updates):
+
+- **[百度文心多轮对话](docs/zh/updates/baidu-ai-chat.md)** — Agent 自主与百度文心多轮深入交流，纯 Playwright 无需 API Key / 浏览器插件。
+- **[定时任务 deliver=auto 与 YAML](docs/zh/updates/cron-deliver-auto-and-yml.md)** — 定时任务 `deliver=auto`（由 Agent 自主决定是否通知）；`cron get` / `cron add --file` / `cron update` 支持 YAML 导入导出。
+- **[Google Search AI 多轮对话（Playwright）](docs/zh/updates/google-ai-chat-playwright.md)** — Agent 自主与谷歌搜索多轮深入交流，纯 Playwright 无需 API Key / Chrome 插件。
+- **[QQ 收到消息即时回复](docs/zh/updates/qq-received-reply.md)** — QQ 通道在收到消息后先发一条可配置的「已收到」回复（`received_reply`），再进入 Agent 处理。
+- **[原生工具优化](docs/zh/updates/原生工具优化.md)** — `read_file`：支持图片（base64 供视觉分析）、按行范围（`line_offset`/`n_lines`）；`edit_file`：支持整文件替换；二进制与错误处理。
+- **[小红书阅读工具](docs/zh/updates/小红书阅读工具.md)** — 小红书帖子秒入 Agent 知识库；标题、正文、配图一起读入供模型分析。
+- **[Kimi For Coding 适配](docs/zh/updates/kimi-for-coding-适配说明.md)** — Kimi For Coding 接口：User-Agent 适配、直连 OpenAI 兼容客户端、多轮对话中 `reasoning_content` 处理。
 
 ## 📢 News
 

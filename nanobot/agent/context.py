@@ -152,11 +152,19 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         reasoning_content: str | None = None,
         thinking_blocks: list[dict] | None = None,
     ) -> list[dict[str, Any]]:
-        """Add an assistant message to the message list."""
-        msg: dict[str, Any] = {"role": "assistant", "content": content}
+        """Add an assistant message to the message list.
+        When thinking is enabled (Kimi, DeepSeek-R1, etc.), APIs may require
+        reasoning_content on assistant tool-call messages — use empty string
+        when absent so the key is always present.
+        """
+        msg: dict[str, Any] = {"role": "assistant"}
+        if content:
+            msg["content"] = content
         if tool_calls:
             msg["tool_calls"] = tool_calls
-        if reasoning_content is not None:
+            # When thinking is enabled, API requires reasoning_content on assistant tool-call messages
+            msg["reasoning_content"] = reasoning_content if reasoning_content else ""
+        elif reasoning_content:
             msg["reasoning_content"] = reasoning_content
         if thinking_blocks:
             msg["thinking_blocks"] = thinking_blocks

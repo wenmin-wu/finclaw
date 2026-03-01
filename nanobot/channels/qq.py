@@ -125,6 +125,27 @@ class QQChannel(BaseChannel):
             if not content:
                 return
 
+            if not self.is_allowed(user_id):
+                await self._handle_message(
+                    sender_id=user_id,
+                    chat_id=user_id,
+                    content=content,
+                    metadata={"message_id": data.id},
+                )
+                return
+
+            # 暗示已收到：先发一条短回复，再交给 bus 处理
+            reply = (getattr(self.config, "received_reply", None) or "").strip()
+            if reply and self._client:
+                try:
+                    await self._client.api.post_c2c_message(
+                        openid=user_id,
+                        msg_type=0,
+                        content=reply,
+                    )
+                except Exception as e:
+                    logger.debug("QQ received_reply failed: {}", e)
+
             await self._handle_message(
                 sender_id=user_id,
                 chat_id=user_id,

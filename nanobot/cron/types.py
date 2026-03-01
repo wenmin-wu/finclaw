@@ -1,7 +1,7 @@
 """Cron types."""
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Union
 
 
 @dataclass
@@ -23,8 +23,8 @@ class CronPayload:
     """What to do when the job runs."""
     kind: Literal["system_event", "agent_turn"] = "agent_turn"
     message: str = ""
-    # Deliver response to channel
-    deliver: bool = False
+    # Deliver response to channel: True=always, False=never, "auto"=agent decides via message tool
+    deliver: Union[bool, Literal["auto"]] = False
     channel: str | None = None  # e.g. "whatsapp"
     to: str | None = None  # e.g. phone number
 
