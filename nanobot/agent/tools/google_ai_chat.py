@@ -62,9 +62,8 @@ async def _send_message_and_wait(
     if not textarea:
         raise RuntimeError("Could not find message input textarea on Google Search AI page")
 
-    # 2) 清空并输入
-    await textarea.fill("")
-    await textarea.press_sequentially(message, delay=10)
+    # 2) 清空并输入（ElementHandle 无 press_sequentially，用 fill 即可）
+    await textarea.fill(message)
     await page.wait_for_timeout(200)
 
     # 3) 找发送按钮并点击

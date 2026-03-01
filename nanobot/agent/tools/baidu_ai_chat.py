@@ -11,13 +11,17 @@ from nanobot.agent.tools.base import Tool
 
 BAIDU_CHAT_URL = "https://chat.baidu.com/search"
 
-# agent-browser 探测：输入框为 textarea.ci-textarea，发送用 Enter，回复在 p.marklang-paragraph
+# agent-browser 探测（CDP 19327）：输入框 textarea，Enter 发送，回复在 p.marklang-paragraph。
+# 生成状态：生成中 = .ci-submit-pause（图2）；生成结束 = #ci-submit-button-ai.ci-submit-button-ai-active（图1）。据此判断何时拼接完整回复。
 TEXTAREA_SELECTORS = [
     "textarea.ci-textarea",
     "textarea.ci-scroll-style",
     "textarea",
 ]
 RESPONSE_PARAGRAPH_SELECTOR = "p.marklang-paragraph"
+# 生成结束 = 出现图1（发送按钮）；生成中 = 出现图2（暂停按钮）
+SELECTOR_GENERATION_DONE = "#ci-submit-button-ai.ci-submit-button-ai-active"  # 图1
+SELECTOR_GENERATING = ".ci-submit-pause"  # 图2
 
 
 async def _send_message_and_wait(
@@ -42,42 +46,86 @@ async def _send_message_and_wait(
     if not textarea:
         raise RuntimeError("Could not find message input (textarea) on Baidu chat page")
 
-    # 2) 清空并输入
-    await textarea.fill("")
-    await textarea.press_sequentially(message, delay=10)
+    # 2) 清空并输入（ElementHandle 无 press_sequentially，用 fill 即可）
+    await textarea.fill(message)
     await page.wait_for_timeout(200)
 
     # 3) 用 Enter 提交（百度文心无独立发送按钮，Enter 发送）
     await page.keyboard.press("Enter")
     await page.wait_for_timeout(500)
 
-    # 4) 等待第 response_index 条回复出现（p.marklang-paragraph）
+    # 4) 等待本条回复出现并流式结束（一条回复可能对应多个 p.marklang-paragraph）
+    # 结束条件：出现图1（#ci-submit-button-ai.ci-submit-button-ai-active）即生成结束；或段落数连续稳定 3 次兜底
+    start_index = response_index - 1  # 本条回复从第 start_index 个段落开始（0-based）
     poll_interval_ms = 500
+    stable_checks = 3  # 兜底：连续 3 次 count 不变认为流式结束
     elapsed = 0
     last_count = 0
+    prev_count = -1
+    stable_count = 0
+
     while elapsed < timeout_ms:
-        count = await page.evaluate(
+        result = await page.evaluate(
             """
-            () => document.querySelectorAll('p.marklang-paragraph').length;
+            () => {
+                const count = document.querySelectorAll('p.marklang-paragraph').length;
+                const generationDone = !!document.querySelector('#ci-submit-button-ai.ci-submit-button-ai-active');
+                return [count, generationDone];
+            }
             """
         )
+        count = result[0] if isinstance(result, (list, tuple)) else result
+        button_done = result[1] if isinstance(result, (list, tuple)) and len(result) > 1 else False
         last_count = count
-        if count >= response_index:
-            text = await page.evaluate(
-                """
-                (idx) => {
-                    const els = document.querySelectorAll('p.marklang-paragraph');
-                    const el = els[idx - 1];
-                    return el ? (el.textContent || el.innerText || '').trim() : '';
-                }
-                """,
-                response_index,
-            )
-            if text:
-                return text
+        if count > start_index:
+            if count == prev_count:
+                stable_count += 1
+            else:
+                stable_count = 0
+            prev_count = count
+            # 至少有一条新段落，且（图1 出现 = 生成结束 或 段落数连续稳定兜底）
+            if button_done or stable_count >= stable_checks:
+                text = await page.evaluate(
+                    """
+                    (startIdx, endIdx) => {
+                        const els = document.querySelectorAll('p.marklang-paragraph');
+                        const parts = [];
+                        for (let i = startIdx; i < endIdx && i < els.length; i++) {
+                            const t = (els[i].textContent || els[i].innerText || '').trim();
+                            if (t) parts.push(t);
+                        }
+                        return parts.join('\\n\\n');
+                    }
+                    """,
+                    start_index,
+                    count,
+                )
+                if text:
+                    return text
+        else:
+            stable_count = 0
         await page.wait_for_timeout(poll_interval_ms)
         elapsed += poll_interval_ms
 
+    # 超时前若已有新段落，仍返回已抓到的内容，避免完全丢回复
+    if last_count > start_index:
+        text = await page.evaluate(
+            """
+            (startIdx, endIdx) => {
+                const els = document.querySelectorAll('p.marklang-paragraph');
+                const parts = [];
+                for (let i = startIdx; i < endIdx && i < els.length; i++) {
+                    const t = (els[i].textContent || els[i].innerText || '').trim();
+                    if (t) parts.push(t);
+                }
+                return parts.join('\\n\\n');
+            }
+            """,
+            start_index,
+            last_count,
+        )
+        if text:
+            return text
     raise RuntimeError(
         f"Response #{response_index} did not appear within {timeout_ms/1000}s (found {last_count} paragraphs)"
     )
@@ -158,7 +206,7 @@ async def _run_baidu_ai_chat(
                 browser = await p.chromium.connect_over_cdp(cdp_url, timeout=15000)
             except Exception as e:
                 return (
-                    f"Error: 无法连接 Chrome 调试端口 {cdp_port}。请先运行 agent-browser connect {cdp_port} 或 start-chrome-debug.sh。{e}",
+                    f"Error: 无法连接 Chrome 调试端口 {cdp_port}。请先运行 nanobot gateway（会按 tools.chromeDebug 自动启动 Chrome）或手动以 --remote-debugging-port={cdp_port} 启动 Chrome。{e}",
                     p,
                     None,
                     None,
@@ -222,7 +270,7 @@ class BaiduAIChatTool(Tool):
             "与百度文心助手（chat.baidu.com/search）多轮对话。"
             "传入 message 发送一条消息并返回 AI 的回复；同一会话内多次调用延续同一对话。"
             "若 end_conversation 为 true 则结束当前对话。"
-            "使用专用 tab；需先启动 Chrome 调试（如 scripts/start-chrome-debug.sh，端口 9222）并设置 tools.baiduAiChat.useCdp=true。"
+            "当 tools.baiduAiChat.useCdp=true（默认）时连接本机 Chrome 调试端口（与 gateway 自动启动的 Chrome 共用），在该浏览器内开专用 tab 访问百度文心。"
         )
 
     @property

@@ -73,8 +73,8 @@ def _migrate_config(data: dict) -> dict:
     if "rednote" not in tools:
         tools["rednote"] = {"maxImages": 20}
     if "googleAiChat" not in tools:
-        tools["googleAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": False, "cdpPort": 19327}
+        tools["googleAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": True, "cdpPort": 19327}
     if "baiduAiChat" not in tools:
-        tools["baiduAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": False, "cdpPort": 9222}
+        tools["baiduAiChat"] = {"enabled": False, "responseTimeout": 90, "headless": True, "useCdp": True, "cdpPort": 19327}
 
     return data

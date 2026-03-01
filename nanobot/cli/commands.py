@@ -2,10 +2,11 @@
 
 import asyncio
 import os
-import signal
-from pathlib import Path
 import select
+import signal
+import subprocess
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -605,6 +606,9 @@ def agent(
 channels_app = typer.Typer(help="Manage channels")
 app.add_typer(channels_app, name="channels")
 
+rednote_app = typer.Typer(help="RedNote (Xiaohongshu) login and state")
+app.add_typer(rednote_app, name="rednote")
+
 
 @channels_app.command("status")
 def channels_status():
@@ -779,6 +783,87 @@ def channels_login():
         console.print(f"[red]Bridge failed: {e}[/red]")
     except FileNotFoundError:
         console.print("[red]npm not found. Please install Node.js.[/red]")
+
+
+# ============================================================================
+# RedNote Commands
+# ============================================================================
+
+
+async def _rednote_login_async(port: int, auth_path: Path, timeout: int) -> None:
+    """Use Playwright to connect to Chrome, open RedNote, wait for login, save state."""
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        console.print("[red]Playwright required. Install with: pip install playwright[/red]")
+        raise typer.Exit(1)
+
+    cdp_url = f"http://127.0.0.1:{port}"
+    async with async_playwright() as p:
+        try:
+            browser = await p.chromium.connect_over_cdp(cdp_url, timeout=15000)
+        except Exception as e:
+            console.print(
+                f"[red]Cannot connect to Chrome at {cdp_url}. "
+                f"Start Chrome with --remote-debugging-port={port} (e.g. run nanobot gateway first).[/red]"
+            )
+            console.print(f"[dim]{e}[/dim]")
+            raise typer.Exit(1)
+
+        try:
+            if browser.contexts:
+                context = browser.contexts[0]
+            else:
+                context = await browser.new_context()
+            page = await context.new_page()
+            await page.goto("https://www.xiaohongshu.com/explore", wait_until="domcontentloaded", timeout=20000)
+            console.print(f"\n[bold]Log in in the browser window. Waiting up to {timeout}s (Ctrl+C to save and exit)...[/bold]\n")
+            try:
+                await asyncio.sleep(timeout)
+            except asyncio.CancelledError:
+                console.print("\n[yellow]Interrupted; saving current state.[/yellow]")
+            await context.storage_state(path=str(auth_path))
+            console.print(f"[green]Credentials saved to {auth_path}[/green]")
+        finally:
+            await browser.close()
+
+
+@rednote_app.command("login")
+def rednote_login(
+    timeout: int = typer.Option(60, "--timeout", "-t", help="Seconds to wait for you to log in"),
+    port: int = typer.Option(
+        19327,
+        "--port",
+        "-p",
+        help="Chrome remote debugging port (should match tools.chromeDebug.cdpPort)",
+    ),
+):
+    """Log in to RedNote (Xiaohongshu) and save credentials for read_rednote.
+
+    Uses Playwright to connect to an existing Chrome (e.g. started by `nanobot gateway`
+    or with --remote-debugging-port=19327). Opens the RedNote explore page; you log in
+    in the browser. State is saved to ~/.nanobot/rednote/auth.json (cookies/localStorage).
+    No Node.js or agent-browser required; only needs: pip install playwright.
+    """
+    from nanobot.config.loader import get_data_dir
+
+    auth_dir = get_data_dir() / "rednote"
+    auth_dir.mkdir(parents=True, exist_ok=True)
+    auth_path = auth_dir / "auth.json"
+
+    console.print(
+        f"[cyan]{__logo__}[/cyan] RedNote login (Chrome must be running with "
+        f"--remote-debugging-port={port})"
+    )
+    console.print("Opening RedNote explore page in Chrome...")
+
+    try:
+        asyncio.run(_rednote_login_async(port, auth_path, timeout))
+    except typer.Exit:
+        raise
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted.[/yellow]")
+        raise typer.Exit(0)
 
 
 # ============================================================================

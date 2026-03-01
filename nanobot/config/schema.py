@@ -183,8 +183,6 @@ class QQConfig(Base):
     app_id: str = ""  # 机器人 ID (AppID) from q.qq.com
     secret: str = ""  # 机器人密钥 (AppSecret) from q.qq.com
     allow_from: list[str] = Field(default_factory=list)  # Allowed user openids (empty = public access)
-    # 收到用户消息后立即回复的文案，用于暗示已收到（空字符串表示不发送）
-    received_reply: str = "收到，正在处理～"
 
 class MatrixConfig(Base):
     """Matrix (Element) channel configuration."""
@@ -307,9 +305,9 @@ class GoogleAIChatConfig(Base):
 
     enabled: bool = False
     response_timeout: int = 90  # 单轮回复最大等待秒数
-    headless: bool = True  # 是否无头模式
+    headless: bool = False  # 是否无头模式
     # 若设置则通过 CDP 连接已有 Chrome（与 chromeDebug 端口一致）；不设置则每次由 Playwright 自行启动 Chromium
-    use_cdp: bool = False
+    use_cdp: bool = True
     cdp_port: int = 19327
 
 
@@ -318,9 +316,9 @@ class BaiduAIChatConfig(Base):
 
     enabled: bool = False
     response_timeout: int = 90  # 单轮回复最大等待秒数
-    headless: bool = True
-    use_cdp: bool = False
-    cdp_port: int = 9222  # 默认与 start-chrome-debug.sh 的 9222 一致
+    headless: bool = False
+    use_cdp: bool = True
+    cdp_port: int = 19327  # 与 chromeDebug 端口一致，便于共用本机 Chrome
 
 
 class WebToolsConfig(Base):

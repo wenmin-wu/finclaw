@@ -96,10 +96,12 @@ class QQChannel(BaseChannel):
         logger.info("QQ bot stopped")
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through QQ."""
+        """Send a message through QQ. 一对一：只发最终回复，不发送进度/中间消息，避免去重(40054005)。"""
         if not self._client:
             logger.warning("QQ client not initialized")
             return
+        if msg.metadata.get("_progress"):
+            return  # QQ 每条用户消息只发一条回复，跳过进度与 tool hint
         try:
             msg_id = msg.metadata.get("message_id")
             await self._client.api.post_c2c_message(
@@ -133,18 +135,6 @@ class QQChannel(BaseChannel):
                     metadata={"message_id": data.id},
                 )
                 return
-
-            # 暗示已收到：先发一条短回复，再交给 bus 处理
-            reply = (getattr(self.config, "received_reply", None) or "").strip()
-            if reply and self._client:
-                try:
-                    await self._client.api.post_c2c_message(
-                        openid=user_id,
-                        msg_type=0,
-                        content=reply,
-                    )
-                except Exception as e:
-                    logger.debug("QQ received_reply failed: {}", e)
 
             await self._handle_message(
                 sender_id=user_id,

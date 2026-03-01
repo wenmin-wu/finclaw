@@ -136,10 +136,13 @@ class AgentLoop:
             self.tools.register(CronTool(self.cron_service))
         if self.rednote_config is not None:
             from nanobot.agent.tools.rednote import ReadRedNoteTool
+            from nanobot.config.loader import get_data_dir
             cdp_port = self.chrome_debug_config.cdp_port if self.chrome_debug_config else 19327
+            auth_path = str(get_data_dir() / "rednote" / "auth.json")
             self.tools.register(ReadRedNoteTool(
                 cdp_port=cdp_port,
                 max_images=self.rednote_config.max_images,
+                storage_state_path=auth_path,
             ))
         if self.google_ai_chat_config is not None and getattr(self.google_ai_chat_config, "enabled", False):
             from nanobot.agent.tools.google_ai_chat import GoogleAIChatTool

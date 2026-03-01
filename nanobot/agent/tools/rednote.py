@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import re
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -57,8 +58,14 @@ async def _fetch_image_as_base64(url: str, page_url: str, timeout: float = 15.0)
     return f"data:{ctype};base64,{b64}"
 
 
-async def _get_note_detail_via_playwright(cdp_url: str, url: str) -> dict[str, Any] | str:
-    """通过 CDP 连接 Chrome，打开笔记页并提取标题、正文、作者、图片等。"""
+async def _get_note_detail_via_playwright(
+    cdp_url: str,
+    url: str,
+    storage_state_path: str | None = None,
+) -> dict[str, Any] | str:
+    """通过 CDP 连接 Chrome，打开笔记页并提取标题、正文、作者、图片等。
+    若提供 storage_state_path 且文件存在，则用其恢复 cookies/localStorage（如 nanobot rednote login 保存的登录态）。
+    """
     try:
         from playwright.async_api import async_playwright
     except ImportError:
@@ -101,7 +108,10 @@ async def _get_note_detail_via_playwright(cdp_url: str, url: str) -> dict[str, A
             return f"Error: 无法连接 Chrome（{cdp_url}）。请确认已开启调试模式或本程序已自动启动 Chrome。{e}"
 
         try:
-            if browser.contexts:
+            use_storage = storage_state_path and Path(storage_state_path).exists()
+            if use_storage:
+                context = await browser.new_context(storage_state=storage_state_path)
+            elif browser.contexts:
                 context = browser.contexts[0]
             else:
                 context = await browser.new_context()
@@ -135,9 +145,15 @@ class ReadRedNoteTool(Tool):
     若由本程序自动启动 Chrome，会使用独立用户目录，首次使用需在该浏览器中登录小红书。
     """
 
-    def __init__(self, cdp_port: int = 19327, max_images: int = 20):
+    def __init__(
+        self,
+        cdp_port: int = 19327,
+        max_images: int = 20,
+        storage_state_path: str | None = None,
+    ):
         self.cdp_port = cdp_port
         self.max_images = max(0, max_images)
+        self.storage_state_path = storage_state_path
 
     @property
     def name(self) -> str:
@@ -166,7 +182,9 @@ class ReadRedNoteTool(Tool):
 
     async def execute(self, *, url: str, **kwargs: Any) -> str | list[dict[str, Any]]:
         cdp_url = f"http://127.0.0.1:{self.cdp_port}"
-        result = await _get_note_detail_via_playwright(cdp_url, url)
+        result = await _get_note_detail_via_playwright(
+            cdp_url, url, storage_state_path=self.storage_state_path
+        )
         if isinstance(result, str):
             return result
 
